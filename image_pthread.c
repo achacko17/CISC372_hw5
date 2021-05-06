@@ -2,10 +2,17 @@
 #include <stdint.h>
 #include <time.h>
 #include <string.h>
-#include "image_omp.h"
-#ifdef _OPENMP
-#include <omp.h>
-#endif
+#include "image_pthread.h"
+#include <pthread.h>
+
+//thread count
+#define N 10
+// original image
+Image srcImage;
+// resulting image
+Image destImage;
+
+enum KernelTypes type;
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -65,23 +72,24 @@ uint8_t getPixelValue(Image *srcImage, int x, int y, int bit, Matrix algorithm)
 //            destImage: A pointer to a  pre-allocated (including space for the pixel array) structure to receive the convoluted image.  It should be the same size as srcImage
 //            algorithm: The kernel matrix to use for the convolution
 //Returns: Nothing
-void convolute(Image *srcImage, Image *destImage, Matrix algorithm)
+void *convolute(void *rank)
 {
+    long my_rank = (long)rank;
+    int start = (my_rank) * (srcImage.height + N - 1) / N;
+    int end = (my_rank + 1) * (srcImage.height + N - 1) / N;
     int row, pix, bit, span;
-    span = srcImage->bpp * srcImage->bpp;
-#ifdef _OPENMP
-#pragma omp parallel for collapse(3) schedule(dynamic)
-#endif
-    for (row = 0; row < srcImage->height; row++)
+
+    for (row = start; row < end && row < srcImage.height; row++)
     {
-        for (pix = 0; pix < srcImage->width; pix++)
+        for (pix = 0; pix < srcImage.width; pix++)
         {
-            for (bit = 0; bit < srcImage->bpp; bit++)
+            for (bit = 0; bit < srcImage.bpp; bit++)
             {
-                destImage->data[Index(pix, row, srcImage->width, bit, srcImage->bpp)] = getPixelValue(srcImage, pix, row, bit, algorithm);
+                destImage.data[Index(pix, row, srcImage.width, bit, srcImage.bpp)] = getPixelValue(&srcImage, pix, row, bit, algorithms[type]);
             }
         }
     }
+    return 0;
 }
 
 //Usage: Prints usage information for the program
@@ -115,8 +123,8 @@ enum KernelTypes GetKernelType(char *type)
 //argv is expected to take 2 arguments.  First is the source file name (can be jpg, png, bmp, tga).  Second is the lower case name of the algorithm.
 int main(int argc, char **argv)
 {
-    // long t1, t2;
-    // t1 = time(NULL);
+    long t1, t2;
+    t1 = time(NULL);
 
     stbi_set_flip_vertically_on_load(0);
     if (argc != 3)
@@ -126,9 +134,9 @@ int main(int argc, char **argv)
     {
         printf("You have applied a gaussian filter to Gauss which has caused a tear in the time-space continum.\n");
     }
-    enum KernelTypes type = GetKernelType(argv[2]);
+    type = GetKernelType(argv[2]);
 
-    Image srcImage, destImage, bwImage;
+    Image bwImage;
     srcImage.data = stbi_load(fileName, &srcImage.width, &srcImage.height, &srcImage.bpp, 0);
     if (!srcImage.data)
     {
@@ -140,15 +148,26 @@ int main(int argc, char **argv)
     destImage.width = srcImage.width;
     destImage.data = malloc(sizeof(uint8_t) * destImage.width * destImage.bpp * destImage.height);
 
-    // double t1 = omp_get_wtime();
-    convolute(&srcImage, &destImage, algorithms[type]);
-    // double t2 = omp_get_wtime();
+    pthread_t *threads;
+    threads = (pthread_t *)malloc(N * sizeof(pthread_t));
 
-    // printf("%lf seconds\n", t2 - t1);
+    for (int i = 0; i < N; i++)
+    {
+        pthread_create(&threads[i], NULL, &convolute, NULL);
+    }
 
+    for (int i = 0; i < N; i++)
+    {
+        pthread_join(threads[i], NULL);
+    }
+    free(threads);
+
+    // convolute(&srcImage, &destImage, algorithms[type]);
     stbi_write_png("output.png", destImage.width, destImage.height, destImage.bpp, destImage.data, destImage.bpp * destImage.width);
     stbi_image_free(srcImage.data);
 
     free(destImage.data);
+    t2 = time(NULL);
+    printf("Took %ld seconds\n", t2 - t1);
     return 0;
 }
