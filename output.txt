@@ -1,0 +1,9 @@
+Script started on 2021-05-06 16:45:05-04:00
+]0;adheena@br012:~/CISC372_hw5[adheena@r001 CISC372_hw5]$ ./image_omp pic1.jpg edge
+Took 7 seconds
+]0;adheena@br012:~/CISC372_hw5[adheena@r001 CISC372_hw5]$ ./image pic1.jpg edge
+Took 5 seconds
+]0;adheena@br012:~/CISC372_hw5[adheena@r001 CISC372_hw5]$ exit
+exit
+
+Script done on 2021-05-06 16:45:43-04:00
